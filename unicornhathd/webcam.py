@@ -19,11 +19,21 @@ def display_image_array(arr):
 			uh.set_pixel(x, y, r, g, b)
 	uh.show()
 
-if __name__ == "__main__":
+
+def capture_and_display():
 	os.system("fswebcam -r 16x16 --no-banner  image.jpg")
 
-	img = Image.open("image.jpg")
-	arr = np.array(img)
-
-	print arr.shape
+        img = Image.open("image.jpg")
+        arr = np.array(img)
 	display_image_array(arr)
+
+def loop_display():
+	while True:
+		capture_and_display()
+
+if __name__ == "__main__":
+	if "--loop" in sys.argv:
+		loop_display()
+	else:
+		capture_and_display()
+	

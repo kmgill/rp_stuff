@@ -12,18 +12,22 @@ from scipy.misc import imresize
 from PIL import Image
 
 colors = np.array([
+	[36, 0, 79],
 	[125, 0, 255],
 	[0, 0, 255],
 	[0, 255, 255],
 	[255, 255, 0],
 	[255, 125, 0],
-	[255, 0, 0]
+	[255, 0, 0],
+	[79, 0, 0]
 ])
 
 """
 Fetches the color gradient relative to the fraction ('f') of 0-1.0
 """
 def get_color(f):
+	if np.isnan(f):
+		return (0, 0, 0)
 	i = f * (len(colors) - 1.0)
 	low = int(math.floor(i))
 	high = int(math.ceil(i))

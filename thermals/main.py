@@ -11,6 +11,7 @@ from PIL import ImageFont
 import sys
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_SSD1306
+import RPi.GPIO as GPIO
 
 colors = np.array([
 	[36, 0, 79],
@@ -24,6 +25,65 @@ colors = np.array([
 ])
 
 means = None
+
+min_sampled_mean = 1000000
+max_sampled_mean = -1000000
+
+
+class SimplePinOut:
+	def __init__(self, pin_no):
+		self.__pin_no = pin_no
+		GPIO.setup(self.__pin_no, GPIO.OUT)
+
+	def on(self):
+		GPIO.output(self.__pin_no, True)
+
+	def off(self):
+		GPIO.output(self.__pin_no, False)
+
+class SimpleGPIO:
+
+	def __init__(self, warnings=False):
+		self.__pins = {}
+		GPIO.setmode(GPIO.BCM)
+		#GPIO.setwarnings(warnings)
+
+	def get_pin_out(self, pin_no):
+		if pin_no not in self.__pins:
+			self.__pins[pin_no] = SimplePinOut(pin_no)
+		return self.__pins[pin_no]
+
+class LedScale:
+
+	def __init__(self, pins):
+		self.__pins = pins
+		self.__gpio = SimpleGPIO()
+
+	def __set_pin(self, pin_no, on=True):
+		pin = self.__gpio.get_pin_out(pin_no)
+		if on is True:
+			pin.on()
+		else:
+			pin.off()
+
+	def __set_pins(self, pin_nos, on=True):
+		for pin_no in pin_nos:
+			self.__set_pin(pin_no, on)
+
+	def clear(self):
+		for pin_no in self.__pins:
+			self.__set_pin(pin_no, False)
+
+	def set(self, level):
+		"""
+		Sets the scale level (0.0 - 1.0)
+		"""
+		assert level >= 0.0 and level <= 1.0
+		self.clear()
+
+		num_leds_to_on = int(round(level * len(self.__pins)))
+		set_pin_nos = self.__pins[:num_leds_to_on]
+		self.__set_pins(set_pin_nos, True)
 
 
 class PiOLED:
@@ -40,7 +100,7 @@ class PiOLED:
 		self.draw = ImageDraw.Draw(self.image)
 		self.font = ImageFont.load_default()
 		self.clear()
-		
+
 		#y = self.height / 2
 		#self.draw.line(((self.width/2, y), (self.width, y)), fill=255, width=1)
 		#self.show()
@@ -102,16 +162,25 @@ def display_to_uh(arr):
 	arr = imresize(arr, (16, 16), interp='lanczos')
 	for y in range(arr.shape[0]):
 		for x in range(arr.shape[1]):
-			f = (arr[y][x] - arr.min()) / (arr.max() - arr.min()) 
+			f = (arr[y][x] - arr.min()) / (arr.max() - arr.min())
 			rgb = get_color(f)
 			uh.set_pixel(x, y, rgb[0], rgb[1], rgb[2])
 	uh.show()
 
 
 def display_to_pioled(amg_pixels):
+	global min_sampled_mean
+	global max_sampled_mean
+
 	min = amg_pixels.min()
 	max = amg_pixels.max()
 	mean = amg_pixels.mean()
+	min_sampled_mean = np.min([min_sampled_mean, mean])
+	max_sampled_mean = np.max([max_sampled_mean, mean])
+	if max_sampled_mean > min_sampled_mean:
+		level = (mean - min_sampled_mean) / (max_sampled_mean - min_sampled_mean)
+	else:
+		level = 1.0
 	add_mean(mean)
 	led_disp.clear(disp=False)
 	led_disp.text("Min: %.1f"%min, (0, 2))
@@ -119,6 +188,10 @@ def display_to_pioled(amg_pixels):
 	led_disp.text("Mean: %.1f"%mean, (0, 18))
 	draw_means_line()
 	led_disp.show()
+
+	led_scale.set(level)
+
+
 
 
 """
@@ -132,11 +205,15 @@ def loop_display(amg):
 
 
 if __name__ == "__main__":
+
+	led_scale = LedScale([5, 6, 12, 13, 16, 19, 20, 21, 26])
+	led_scale.clear()
+
 	i2c = busio.I2C(board.SCL, board.SDA)
 	amg = adafruit_amg88xx.AMG88XX(i2c)
 
 	led_disp = PiOLED()
-	
+
 	mean_list_len = int(led_disp.width / 2)
 	means = np.zeros((mean_list_len,))
 	means[:] = np.nan
@@ -145,4 +222,3 @@ if __name__ == "__main__":
 		loop_display(amg)
 	finally:
 		uh.off()
-
